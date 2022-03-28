@@ -123,6 +123,15 @@ pane_creation_command() {
 	echo "cat '$(pane_contents_file "restore" "${1}:${2}.${3}")'; exec $(tmux_default_command)"
 }
 
+set_pane_title() {
+	local session_name="$1"
+	local window_number="$2"
+	local pane_index="$3"
+	local pane_title="$4"
+	local pane_id="${session_name}:${window_number}.${pane_index}"
+	tmux select-pane -t "${pane_id}" -T "${pane_title}"
+}
+
 new_window() {
 	local session_name="$1"
 	local window_number="$2"
@@ -170,8 +179,7 @@ new_pane() {
 	else
 		tmux split-window -t "${session_name}:${window_number}" -c "$dir"
 	fi
-	# set pane title
-	tmux select-pane -t "${session_name}:${window_number}.${pane_index}" -T "${pane_title}"
+	set_pane_title "${session_name}" "${window_number}" "${pane_index}" "${pane_title}"
 	# minimize window so more panes can fit
 	tmux resize-pane -t "${session_name}:${window_number}" -U "999"
 }
@@ -195,6 +203,7 @@ restore_pane() {
 				# Pane exists, no need to create it!
 				# Pane existence is registered. Later, its process also won't be restored.
 				register_existing_pane "$session_name" "$window_number" "$pane_index"
+				set_pane_title "$session_name" "$window_number" "$pane_index" "$pane_title"
 			fi
 		elif window_exists "$session_name" "$window_number"; then
 			new_pane "$session_name" "$window_number" "$dir" "$pane_index" "$pane_title"
