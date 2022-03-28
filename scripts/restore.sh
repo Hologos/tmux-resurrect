@@ -162,6 +162,7 @@ new_pane() {
 	local window_number="$2"
 	local dir="$3"
 	local pane_index="$4"
+	local pane_title="$5"
 	local pane_id="${session_name}:${window_number}.${pane_index}"
 	if is_restoring_pane_contents && pane_contents_file_exists "$pane_id"; then
 		local pane_creation_command="$(pane_creation_command "$session_name" "$window_number" "$pane_index")"
@@ -169,13 +170,15 @@ new_pane() {
 	else
 		tmux split-window -t "${session_name}:${window_number}" -c "$dir"
 	fi
+	# set pane title
+	tmux select-pane -t "${session_name}:${window_number}.${pane_index}" -T "${pane_title}"
 	# minimize window so more panes can fit
-	tmux resize-pane  -t "${session_name}:${window_number}" -U "999"
+	tmux resize-pane -t "${session_name}:${window_number}" -U "999"
 }
 
 restore_pane() {
 	local pane="$1"
-	while IFS=$d read line_type session_name window_number window_active window_flags pane_index dir pane_active pane_command pane_full_command; do
+	while IFS=$d read line_type session_name window_number window_active window_flags pane_index pane_title dir pane_active pane_command pane_full_command; do
 		dir="$(remove_first_char "$dir")"
 		pane_full_command="$(remove_first_char "$pane_full_command")"
 		if [ "$session_name" == "0" ]; then
@@ -186,7 +189,7 @@ restore_pane() {
 				# overwrite the pane
 				# happens only for the first pane if it's the only registered pane for the whole tmux server
 				local pane_id="$(tmux display-message -p -F "#{pane_id}" -t "$session_name:$window_number")"
-				new_pane "$session_name" "$window_number" "$dir" "$pane_index"
+				new_pane "$session_name" "$window_number" "$dir" "$pane_index" "$pane_title"
 				tmux kill-pane -t "$pane_id"
 			else
 				# Pane exists, no need to create it!
@@ -194,7 +197,7 @@ restore_pane() {
 				register_existing_pane "$session_name" "$window_number" "$pane_index"
 			fi
 		elif window_exists "$session_name" "$window_number"; then
-			new_pane "$session_name" "$window_number" "$dir" "$pane_index"
+			new_pane "$session_name" "$window_number" "$dir" "$pane_index" "$pane_title"
 		elif session_exists "$session_name"; then
 			new_window "$session_name" "$window_number" "$dir" "$pane_index"
 		else
@@ -302,7 +305,7 @@ restore_window_properties() {
 }
 
 restore_shell_history() {
-	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ { print $2, $3, $6, $9; }' $(last_resurrect_file) |
+	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ { print $2, $3, $6, $10; }' $(last_resurrect_file) |
 		while IFS=$d read session_name window_number pane_index pane_command; do
 			if ! is_pane_registered_as_existing "$session_name" "$window_number" "$pane_index"; then
 				local pane_id="$session_name:$window_number.$pane_index"
@@ -323,7 +326,7 @@ restore_shell_history() {
 restore_all_pane_processes() {
 	if restore_pane_processes_enabled; then
 		local pane_full_command
-		awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $10 !~ "^:$" { print $2, $3, $6, $7, $10; }' $(last_resurrect_file) |
+		awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $11 !~ "^:$" { print $2, $3, $6, $8, $11; }' $(last_resurrect_file) |
 			while IFS=$d read -r session_name window_number pane_index dir pane_full_command; do
 				dir="$(remove_first_char "$dir")"
 				pane_full_command="$(remove_first_char "$pane_full_command")"
@@ -333,7 +336,7 @@ restore_all_pane_processes() {
 }
 
 restore_active_pane_for_each_window() {
-	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $8 == 1 { print $2, $3, $6; }' $(last_resurrect_file) |
+	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $9 == 1 { print $2, $3, $6; }' $(last_resurrect_file) |
 		while IFS=$d read session_name window_number active_pane; do
 			tmux switch-client -t "${session_name}:${window_number}"
 			tmux select-pane -t "$active_pane"
@@ -341,7 +344,7 @@ restore_active_pane_for_each_window() {
 }
 
 restore_zoomed_windows() {
-	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $5 ~ /Z/ && $8 == 1 { print $2, $3; }' $(last_resurrect_file) |
+	awk 'BEGIN { FS="\t"; OFS="\t" } /^pane/ && $5 ~ /Z/ && $9 == 1 { print $2, $3; }' $(last_resurrect_file) |
 		while IFS=$d read session_name window_number; do
 			tmux resize-pane -t "${session_name}:${window_number}" -Z
 		done
