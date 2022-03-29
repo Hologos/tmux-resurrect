@@ -123,6 +123,70 @@ pane_creation_command() {
 	echo "cat '$(pane_contents_file "restore" "${1}:${2}.${3}")'; exec $(tmux_default_command)"
 }
 
+pane_format() {
+	local format
+	local delimiter=$'\t'
+	format+="pane"
+	format+="${delimiter}"
+	format+="#{session_name}"
+	format+="${delimiter}"
+	format+="#{window_index}"
+	format+="${delimiter}"
+	format+="#{window_active}"
+	format+="${delimiter}"
+	format+=":#{window_flags}"
+	format+="${delimiter}"
+	format+=":#{pane_id}"
+	format+="${delimiter}"
+	format+="#{pane_index}"
+	format+="${delimiter}"
+	format+="#{pane_title}"
+	format+="${delimiter}"
+	format+=":#{pane_current_path}"
+	format+="${delimiter}"
+	format+="#{pane_active}"
+	format+="${delimiter}"
+	format+="#{pane_current_command}"
+	format+="${delimiter}"
+	format+="#{pane_pid}"
+	format+="${delimiter}"
+	format+="#{history_size}"
+	echo "$format"
+}
+
+pane_format2() {
+	local format
+	local delimiter=$'\t'
+	format+="pane"
+	format+="${delimiter}"
+	format+="s_name"
+	format+="${delimiter}"
+	format+="w_idx"
+	format+="${delimiter}"
+	format+="w_act"
+	format+="${delimiter}"
+	format+=":w_flgs"
+	format+="${delimiter}"
+	format+="p_id"
+	format+="${delimiter}"
+	format+="p_idx"
+	format+="${delimiter}"
+	format+="p_title"
+	format+="${delimiter}"
+	format+=":p_curr_path"
+	format+="${delimiter}"
+	format+="p_act"
+	format+="${delimiter}"
+	format+="p_curr_cmd"
+	format+="${delimiter}"
+	format+="pane_pid"
+	format+="${delimiter}"
+	format+="history_size"
+	format+=$'\n'
+	format+="----------------------------------------------------------------------------------------------------------------------------"
+	echo "$format"
+}
+
 new_window() {
 	local session_name="$1"
 	local window_number="$2"
@@ -163,6 +227,7 @@ new_pane() {
 	local dir="$3"
 	local pane_index="$4"
 	local pane_id="${session_name}:${window_number}.${pane_index}"
+	echo "creating pane: >>${pane_id}<<" >> /tmp/asd.log
 	if is_restoring_pane_contents && pane_contents_file_exists "$pane_id"; then
 		local pane_creation_command="$(pane_creation_command "$session_name" "$window_number" "$pane_index")"
 		tmux split-window -t "${session_name}:${window_number}" -c "$dir" "$pane_creation_command"
@@ -171,37 +236,68 @@ new_pane() {
 	fi
 	# minimize window so more panes can fit
 	tmux resize-pane -t "${session_name}:${window_number}" -U "999"
+
+	echo "=== state after new panel creation ===" >> /tmp/asd.log
+	pane_format2 >> /tmp/asd.log
+	tmux list-panes -a -F "$(pane_format)" >> /tmp/asd.log
 }
 
 restore_pane() {
 	local pane="$1"
+
+	echo >> /tmp/asd.log
+	echo >> /tmp/asd.log
+	echo >> /tmp/asd.log
+	echo >> /tmp/asd.log
+	echo "=== state in the beginning ===" >> /tmp/asd.log
+	pane_format2 >> /tmp/asd.log
+	tmux list-panes -a -F "$(pane_format)" >> /tmp/asd.log
+
 	while IFS=$d read line_type session_name window_number window_active window_flags pane_index pane_title dir pane_active pane_command pane_full_command; do
+		echo >> /tmp/asd.log
+		echo "=== line ($line_type sess: $session_name w_num: $window_number p_idx: $pane_index title: $pane_title) ===" >> /tmp/asd.log
 		dir="$(remove_first_char "$dir")"
 		pane_full_command="$(remove_first_char "$pane_full_command")"
 		if [ "$session_name" == "0" ]; then
 			restored_session_0_true
 		fi
 		if pane_exists "$session_name" "$window_number" "$pane_index"; then
+			echo "pane_exists" >> /tmp/asd.log
 			if is_restoring_from_scratch; then
+				echo "restore_from_scratch" >> /tmp/asd.log
 				# overwrite the pane
 				# happens only for the first pane if it's the only registered pane for the whole tmux server
 				local pane_id="$(tmux display-message -p -F "#{pane_id}" -t "$session_name:$window_number")"
 				new_pane "$session_name" "$window_number" "$dir" "$pane_index"
+				echo "killing pane >>${pane_id}<<" >> /tmp/asd.log
 				tmux kill-pane -t "$pane_id"
 			else
 				# Pane exists, no need to create it!
 				# Pane existence is registered. Later, its process also won't be restored.
+				echo "pane_exists - do not create new one, just set title" >> /tmp/asd.log
 				register_existing_pane "$session_name" "$window_number" "$pane_index"
 			fi
 		elif window_exists "$session_name" "$window_number"; then
+			echo "window_exists" >> /tmp/asd.log
 			new_pane "$session_name" "$window_number" "$dir" "$pane_index"
 		elif session_exists "$session_name"; then
+			echo "session_exists" >> /tmp/asd.log
 			new_window "$session_name" "$window_number" "$dir" "$pane_index"
 		else
+			echo "new_session" >> /tmp/asd.log
 			new_session "$session_name" "$window_number" "$dir" "$pane_index"
 		fi
+
+		echo -e "id:${pane_id}\tsetting title: ${pane_title}" >> /tmp/asd.log
+		echo >> /tmp/asd.log
+
 		# set pane title
 		tmux select-pane -t "$session_name:$window_number.$pane_index" -T "$pane_title"
+
+		echo >> /tmp/asd.log
+		echo "=== state at the end ===" >> /tmp/asd.log
+		pane_format2 >> /tmp/asd.log
+		tmux list-panes -a -F "$(pane_format)" >> /tmp/asd.log
 	done < <(echo "$pane")
 }
 
@@ -383,6 +479,7 @@ cleanup_restored_pane_contents() {
 }
 
 main() {
+	rm -f /tmp/asd.log
 	if supported_tmux_version_ok && check_saved_session_exists; then
 		start_spinner "Restoring..." "Tmux restore complete!"
 		execute_hook "pre-restore-all"
