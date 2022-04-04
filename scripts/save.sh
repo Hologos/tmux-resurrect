@@ -268,7 +268,7 @@ dump_pane_contents() {
 
 dump_shell_history() {
 	dump_panes |
-		while IFS=$d read line_type session_name window_number window_active window_flags pane_index pane_title dir pane_active pane_command full_command; do
+		while IFS=$d read line_type session_name window_number window_active window_flags pane_index dir pane_active pane_command full_command; do
 			save_shell_history "$session_name:$window_number.$pane_index" "$pane_command" "$full_command"
 		done
 }
