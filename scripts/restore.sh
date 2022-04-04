@@ -123,15 +123,6 @@ pane_creation_command() {
 	echo "cat '$(pane_contents_file "restore" "${1}:${2}.${3}")'; exec $(tmux_default_command)"
 }
 
-set_pane_title() {
-	local session_name="$1"
-	local window_number="$2"
-	local pane_index="$3"
-	local pane_title="$4"
-	local pane_id="${session_name}:${window_number}.${pane_index}"
-	tmux select-pane -t "${pane_id}" -T "${pane_title}"
-}
-
 new_window() {
 	local session_name="$1"
 	local window_number="$2"
@@ -209,7 +200,8 @@ restore_pane() {
 		else
 			new_session "$session_name" "$window_number" "$dir" "$pane_index"
 		fi
-		set_pane_title "$session_name" "$window_number" "$pane_index" "$pane_title"
+		# set pane title
+		tmux select-pane -t "$session_name:$window_number.$pane_index" -T "$pane_title"
 	done < <(echo "$pane")
 }
 
